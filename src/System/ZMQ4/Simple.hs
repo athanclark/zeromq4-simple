@@ -65,6 +65,11 @@ type family NeedsIdentity from to :: Constraint where
 newtype ZMQIdent = ZMQIdent {getZMQIdent :: ByteString}
   deriving (Show, Eq, Ord, Generic, Hashable)
 
+newUUIDIdentity :: IO ZMQIdent
+newUUIDIdentity =
+  (ZMQIdent . LBS.toStrict . UUID.toByteString) <$> nextRandom
+
+
 setIdentity :: NeedsIdentity from to => to -> Socket z from -> ZMQIdent -> ZMQ z Bool
 setIdentity _ s (ZMQIdent clientId) =
   case toRestricted clientId of
@@ -73,9 +78,8 @@ setIdentity _ s (ZMQIdent clientId) =
 
 setUUIDIdentity :: NeedsIdentity from to => to -> Socket z from -> ZMQ z ()
 setUUIDIdentity to s = do
-  clientId <- liftIO nextRandom
-
-  worked <- setIdentity to s $ ZMQIdent $ LBS.toStrict $ UUID.toByteString clientId
+  ident <- liftIO newUUIDIdentity
+  worked <- setIdentity to s ident
   when (not worked) (error "couldn't restrict uuid")
 
 

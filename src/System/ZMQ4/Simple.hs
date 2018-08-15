@@ -5,6 +5,8 @@
   , DeriveGeneric
   , TupleSections
   , OverloadedStrings
+  , DataKinds
+  , KindSignatures
   #-}
 
 module System.ZMQ4.Simple where
@@ -31,6 +33,9 @@ import GHC.Generics (Generic)
 
 -- * Types
 
+data Ordinal = Ord1 | OrdN
+
+
 newtype ZMQIdent = ZMQIdent {getZMQIdent :: ByteString}
   deriving (Show, Eq, Ord, Generic, Hashable)
 
@@ -47,42 +52,44 @@ setRandomIdentity s = do
 -- * Classes
 
 -- | Send a message over a ZMQ socket
-class Sendable from to aux | from to -> aux where
+class Sendable from (fromOrd :: Ordinal) to (toOrd :: Ordinal) aux
+  | from to -> fromOrd toOrd aux where
   send :: to -> aux -> Socket z from -> NonEmpty ByteString -> ZMQ z ()
 
-instance Sendable Pub Sub () where
+instance Sendable Pub Ord1 Sub OrdN () where
   send Sub () s xs = Z.sendMulti s xs
 
-instance Sendable XPub Sub () where
+instance Sendable XPub Ord1 Sub OrdN () where
   send Sub () s xs = Z.sendMulti s xs
 
-instance Sendable Req Rep () where
+instance Sendable Req Ord1 Rep Ord1 () where
   send Rep () s xs = Z.sendMulti s xs
 
-instance Sendable Req Router () where
-  send Router () s (x:|xs) = Z.sendMulti s ({-"" :|-} x:|xs)
+instance Sendable Req OrdN Router Ord1 () where
+  send Router () s xs = Z.sendMulti s xs
 
-instance Sendable Router Req ZMQIdent where
+instance Sendable Router Ord1 Req OrdN ZMQIdent where
   send Req (ZMQIdent addr) s (x:|xs) = Z.sendMulti s (addr :| "":x:xs)
 
 
 -- | Receive a message over a ZMQ socket
-class Receivable from to aux | from to -> aux where
+class Receivable from (fromOrd :: Ordinal) to (toOrd :: Ordinal) aux
+  | from to -> fromOrd toOrd aux where
   receive :: to -> Socket z from -> ZMQ z (Maybe (aux, NonEmpty ByteString))
 
-instance Receivable Sub Pub () where
+instance Receivable Sub OrdN Pub Ord1 () where
   receive Pub s = receiveBasic s
 
-instance Receivable Sub XPub () where
+instance Receivable Sub OrdN XPub Ord1 () where
   receive XPub s = receiveBasic s
 
-instance Receivable Req Rep () where
+instance Receivable Req Ord1 Rep Ord1 () where
   receive Rep s = receiveBasic s
 
-instance Receivable Req Router () where
+instance Receivable Req OrdN Router Ord1 () where
   receive Router s = receiveBasic s
 
-instance Receivable Router Req ZMQIdent where
+instance Receivable Router Ord1 Req OrdN ZMQIdent where
   receive Req s = do
     xs <- Z.receiveMulti s
     case xs of

@@ -71,6 +71,12 @@ instance Sendable Req OrdN Router Ord1 () where
 instance Sendable Router Ord1 Req OrdN ZMQIdent where
   send Req (ZMQIdent addr) s (x:|xs) = Z.sendMulti s (addr :| "":x:xs)
 
+instance Sendable Rep OrdN Dealer Ord1 () where
+  send Dealer () s xs = Z.sendMulti s xs
+
+instance Sendable Dealer Ord1 Rep OrdN () where
+  send Rep () s (x:|xs) = Z.sendMulti s ("" :| x:xs)
+
 
 -- | Receive a message over a ZMQ socket
 class Receivable from (fromOrd :: Ordinal) to (toOrd :: Ordinal) aux
@@ -95,6 +101,18 @@ instance Receivable Router Ord1 Req OrdN ZMQIdent where
     case xs of
       (addr:_:x:xs') -> pure (Just (ZMQIdent addr, x :| xs'))
       _ -> pure Nothing
+
+instance Receivable Rep OrdN Dealer Ord1 () where
+  receive Dealer s = receiveBasic s
+
+instance Receivable Dealer Ord1 Rep OrdN () where
+  receive Rep s = do
+    xs <- Z.receiveMulti s
+    case xs of
+      (_:x:xs') -> pure (Just ((), x :| xs'))
+      _ -> pure Nothing
+
+
 
 
 receiveBasic :: Z.Receiver t => Socket s t -> ZMQ s (Maybe ((), NonEmpty ByteString))

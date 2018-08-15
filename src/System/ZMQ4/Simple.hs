@@ -37,20 +37,22 @@ import GHC.Generics (Generic)
 
 -- * Types
 
-data Ordinal = Ord1 | OrdN
+data Ordinal = Ord1 | OrdN | Ord1OrN
 
 -- | The numerity of `from`
 type family Ordinance from to :: Ordinal where
-  Ordinance Pub Sub    = 'Ord1
-  Ordinance XPub Sub   = 'Ord1
-  Ordinance Sub Pub    = 'OrdN
-  Ordinance Sub XPub   = 'OrdN
-  Ordinance Req Rep    = 'Ord1
-  Ordinance Rep Req    = 'Ord1
-  Ordinance Req Router = 'OrdN
-  Ordinance Router Req = 'Ord1
-  Ordinance Rep Dealer = 'OrdN
-  Ordinance Dealer Rep = 'Ord1
+  Ordinance Pub Sub       = 'Ord1
+  Ordinance XPub Sub      = 'Ord1
+  Ordinance Sub Pub       = 'OrdN
+  Ordinance Sub XPub      = 'OrdN
+  Ordinance Req Rep       = 'Ord1
+  Ordinance Rep Req       = 'Ord1
+  Ordinance Req Router    = 'OrdN
+  Ordinance Router Req    = 'Ord1
+  Ordinance Rep Dealer    = 'OrdN
+  Ordinance Dealer Rep    = 'Ord1
+  Ordinance Dealer Router = 'Ord1OrN
+  Ordinance Router Dealer = 'Ord1OrN
 
 
 type family NeedsIdentity from to :: Constraint where

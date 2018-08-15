@@ -8,6 +8,7 @@
   , DataKinds
   , KindSignatures
   , TypeFamilies
+  , ConstraintKinds
   #-}
 
 module System.ZMQ4.Simple where
@@ -26,6 +27,8 @@ import qualified Data.UUID as UUID
 import Data.UUID.V4 (nextRandom)
 import qualified Data.ByteString.Lazy as LBS
 import Data.List.NonEmpty (NonEmpty (..))
+import Data.Constraint (Constraint)
+import Control.Monad (when)
 import Control.Monad.IO.Class (liftIO)
 
 import GHC.Generics (Generic)
@@ -38,29 +41,40 @@ data Ordinal = Ord1 | OrdN
 
 -- | The numerity of `from`
 type family Ordinance from to :: Ordinal where
-  Ordinance Pub Sub    = Ord1
-  Ordinance XPub Sub   = Ord1
-  Ordinance Sub Pub    = OrdN
-  Ordinance Sub XPub   = OrdN
-  Ordinance Req Rep    = Ord1
-  Ordinance Rep Req    = Ord1
-  Ordinance Req Router = OrdN
-  Ordinance Router Req = Ord1
-  Ordinance Rep Dealer = OrdN
-  Ordinance Dealer Rep = Ord1
+  Ordinance Pub Sub    = 'Ord1
+  Ordinance XPub Sub   = 'Ord1
+  Ordinance Sub Pub    = 'OrdN
+  Ordinance Sub XPub   = 'OrdN
+  Ordinance Req Rep    = 'Ord1
+  Ordinance Rep Req    = 'Ord1
+  Ordinance Req Router = 'OrdN
+  Ordinance Router Req = 'Ord1
+  Ordinance Rep Dealer = 'OrdN
+  Ordinance Dealer Rep = 'Ord1
+
+
+type family NeedsIdentity from to :: Constraint where
+  NeedsIdentity Req Router = ()
+  NeedsIdentity Dealer Rep = ()
+  NeedsIdentity Dealer Router = ()
 
 
 
 newtype ZMQIdent = ZMQIdent {getZMQIdent :: ByteString}
   deriving (Show, Eq, Ord, Generic, Hashable)
 
-setRandomIdentity :: Socket z from -> ZMQ z ()
-setRandomIdentity s = do
+setIdentity :: NeedsIdentity from to => to -> Socket z from -> ZMQIdent -> ZMQ z Bool
+setIdentity _ s (ZMQIdent clientId) =
+  case toRestricted clientId of
+    Nothing -> pure False
+    Just ident -> True <$ Z.setIdentity ident s
+
+setUUIDIdentity :: NeedsIdentity from to => to -> Socket z from -> ZMQ z ()
+setUUIDIdentity to s = do
   clientId <- liftIO nextRandom
 
-  case toRestricted $ LBS.toStrict $ UUID.toByteString clientId of
-    Nothing -> error "couldn't restrict uuid"
-    Just ident -> Z.setIdentity ident s
+  worked <- setIdentity to s $ ZMQIdent $ LBS.toStrict $ UUID.toByteString clientId
+  when (not worked) (error "couldn't restrict uuid")
 
 
 
@@ -91,6 +105,12 @@ instance Sendable Rep Dealer () where
 
 instance Sendable Dealer Rep () where
   send Rep () s (x:|xs) = Z.sendMulti s ("" :| x:xs)
+
+instance Sendable Dealer Router () where
+  send Router () s (x:|xs) = Z.sendMulti s ("" :| x:xs)
+
+instance Sendable Router Dealer ZMQIdent where
+  send Dealer (ZMQIdent addr) s (x:|xs) = Z.sendMulti s (addr :| "":x:xs)
 
 
 -- | Receive a message over a ZMQ socket
@@ -127,7 +147,19 @@ instance Receivable Dealer Rep () where
       (_:x:xs') -> pure (Just ((), x :| xs'))
       _ -> pure Nothing
 
+instance Receivable Dealer Router () where
+  receive Router s = do
+    xs <- Z.receiveMulti s
+    case xs of
+      (_:x:xs') -> pure (Just ((), x :| xs'))
+      _ -> pure Nothing
 
+instance Receivable Router Dealer ZMQIdent where
+  receive Dealer s = do
+    xs <- Z.receiveMulti s
+    case xs of
+      (addr:_:x:xs') -> pure (Just (ZMQIdent addr, x :| xs'))
+      _ -> pure Nothing
 
 
 receiveBasic :: Z.Receiver t => Socket s t -> ZMQ s (Maybe ((), NonEmpty ByteString))

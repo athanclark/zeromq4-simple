@@ -7,6 +7,7 @@
   , OverloadedStrings
   , DataKinds
   , KindSignatures
+  , TypeFamilies
   #-}
 
 module System.ZMQ4.Simple where
@@ -35,6 +36,20 @@ import GHC.Generics (Generic)
 
 data Ordinal = Ord1 | OrdN
 
+-- | The numerity of `from`
+type family Ordinance from to :: Ordinal where
+  Ordinance Pub Sub    = Ord1
+  Ordinance XPub Sub   = Ord1
+  Ordinance Sub Pub    = OrdN
+  Ordinance Sub XPub   = OrdN
+  Ordinance Req Rep    = Ord1
+  Ordinance Rep Req    = Ord1
+  Ordinance Req Router = OrdN
+  Ordinance Router Req = Ord1
+  Ordinance Rep Dealer = OrdN
+  Ordinance Dealer Rep = Ord1
+
+
 
 newtype ZMQIdent = ZMQIdent {getZMQIdent :: ByteString}
   deriving (Show, Eq, Ord, Generic, Hashable)
@@ -52,60 +67,60 @@ setRandomIdentity s = do
 -- * Classes
 
 -- | Send a message over a ZMQ socket
-class Sendable from (fromOrd :: Ordinal) to (toOrd :: Ordinal) aux
-  | from to -> fromOrd toOrd aux where
+class Sendable from to aux
+  | from to -> aux where
   send :: to -> aux -> Socket z from -> NonEmpty ByteString -> ZMQ z ()
 
-instance Sendable Pub Ord1 Sub OrdN () where
+instance Sendable Pub Sub () where
   send Sub () s xs = Z.sendMulti s xs
 
-instance Sendable XPub Ord1 Sub OrdN () where
+instance Sendable XPub Sub () where
   send Sub () s xs = Z.sendMulti s xs
 
-instance Sendable Req Ord1 Rep Ord1 () where
+instance Sendable Req Rep () where
   send Rep () s xs = Z.sendMulti s xs
 
-instance Sendable Req OrdN Router Ord1 () where
+instance Sendable Req Router () where
   send Router () s xs = Z.sendMulti s xs
 
-instance Sendable Router Ord1 Req OrdN ZMQIdent where
+instance Sendable Router Req ZMQIdent where
   send Req (ZMQIdent addr) s (x:|xs) = Z.sendMulti s (addr :| "":x:xs)
 
-instance Sendable Rep OrdN Dealer Ord1 () where
+instance Sendable Rep Dealer () where
   send Dealer () s xs = Z.sendMulti s xs
 
-instance Sendable Dealer Ord1 Rep OrdN () where
+instance Sendable Dealer Rep () where
   send Rep () s (x:|xs) = Z.sendMulti s ("" :| x:xs)
 
 
 -- | Receive a message over a ZMQ socket
-class Receivable from (fromOrd :: Ordinal) to (toOrd :: Ordinal) aux
-  | from to -> fromOrd toOrd aux where
+class Receivable from to aux
+  | from to -> aux where
   receive :: to -> Socket z from -> ZMQ z (Maybe (aux, NonEmpty ByteString))
 
-instance Receivable Sub OrdN Pub Ord1 () where
+instance Receivable Sub Pub () where
   receive Pub s = receiveBasic s
 
-instance Receivable Sub OrdN XPub Ord1 () where
+instance Receivable Sub XPub () where
   receive XPub s = receiveBasic s
 
-instance Receivable Req Ord1 Rep Ord1 () where
+instance Receivable Req Rep () where
   receive Rep s = receiveBasic s
 
-instance Receivable Req OrdN Router Ord1 () where
+instance Receivable Req Router () where
   receive Router s = receiveBasic s
 
-instance Receivable Router Ord1 Req OrdN ZMQIdent where
+instance Receivable Router Req ZMQIdent where
   receive Req s = do
     xs <- Z.receiveMulti s
     case xs of
       (addr:_:x:xs') -> pure (Just (ZMQIdent addr, x :| xs'))
       _ -> pure Nothing
 
-instance Receivable Rep OrdN Dealer Ord1 () where
+instance Receivable Rep Dealer () where
   receive Dealer s = receiveBasic s
 
-instance Receivable Dealer Ord1 Rep OrdN () where
+instance Receivable Dealer Rep () where
   receive Rep s = do
     xs <- Z.receiveMulti s
     case xs of

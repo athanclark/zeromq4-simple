@@ -14,10 +14,10 @@
 module System.ZMQ4.Simple where
 
 import System.ZMQ4.Monadic
-  ( ZMQ, Socket, Flag (SendMore)
+  ( ZMQ, SocketType
   , Req (..), Rep (..), Dealer (..), Router (..)
   , Pub (..), Sub (..), XPub (..), XSub (..)
-  , Pull (..), Push (..))
+  , Pull (..), Push (..), Pair (..))
 import qualified System.ZMQ4.Monadic as Z
 
 import Data.Restricted (toRestricted)
@@ -37,22 +37,32 @@ import GHC.Generics (Generic)
 
 -- * Types
 
-data Ordinal = Ord1 | OrdN | Ord1OrN
+data Ordinal = Ord1 | OrdN
 
 -- | The numerity of `from`
-type family Ordinance from to :: Ordinal where
-  Ordinance Pub Sub       = 'Ord1
-  Ordinance XPub Sub      = 'Ord1
-  Ordinance Sub Pub       = 'OrdN
-  Ordinance Sub XPub      = 'OrdN
-  Ordinance Req Rep       = 'Ord1
-  Ordinance Rep Req       = 'Ord1
-  Ordinance Req Router    = 'OrdN
-  Ordinance Router Req    = 'Ord1
-  Ordinance Rep Dealer    = 'OrdN
-  Ordinance Dealer Rep    = 'Ord1
-  Ordinance Dealer Router = 'Ord1OrN
-  Ordinance Router Dealer = 'Ord1OrN
+type family Ordinance from to (loc :: Location) :: Ordinal where
+  Ordinance Pair Pair     'Bound     = 'Ord1
+  Ordinance Pair Pair     'Connected = 'Ord1
+  Ordinance Pub Sub       'Bound     = 'Ord1
+  Ordinance XPub Sub      'Bound     = 'Ord1
+  Ordinance Sub Pub       'Connected = 'OrdN
+  Ordinance Sub XPub      'Connected = 'OrdN
+  Ordinance Pub XSub      'Connected = 'OrdN
+  Ordinance XSub Pub      'Bound     = 'Ord1
+  Ordinance Req Rep       'Connected = 'Ord1
+  Ordinance Rep Req       'Bound     = 'Ord1
+  Ordinance Req Router    'Connected = 'OrdN
+  Ordinance Router Req    'Bound     = 'Ord1
+  Ordinance Rep Dealer    'Connected = 'OrdN
+  Ordinance Dealer Rep    'Bound     = 'Ord1
+  Ordinance Dealer Router 'Connected = 'OrdN
+  Ordinance Dealer Router 'Bound     = 'Ord1
+  Ordinance Router Dealer 'Connected = 'OrdN
+  Ordinance Router Dealer 'Bound     = 'Ord1
+  Ordinance Pull Push     'Connected = 'OrdN
+  Ordinance Pull Push     'Bound     = 'Ord1
+  Ordinance Push Pull     'Connected = 'OrdN
+  Ordinance Push Pull     'Bound     = 'Ord1
 
 
 type family NeedsIdentity from to :: Constraint where
@@ -60,6 +70,42 @@ type family NeedsIdentity from to :: Constraint where
   NeedsIdentity Dealer Rep = ()
   NeedsIdentity Dealer Router = ()
 
+
+data Location = Connected | Bound
+
+type family Bindable from :: Constraint where
+  Bindable Pair = ()
+  Bindable Rep = ()
+  Bindable Router = ()
+  Bindable Dealer = ()
+  Bindable Pub = ()
+  Bindable XPub = ()
+  Bindable XSub = ()
+  Bindable Pull = ()
+  Bindable Push = ()
+
+type family Connectable from :: Constraint where
+  Connectable Pair = ()
+  Connectable Req = ()
+  Connectable Router = ()
+  Connectable Dealer = ()
+  Connectable Sub = ()
+  Connectable Pub = ()
+  Connectable Pull = ()
+  Connectable Push = ()
+
+
+newtype Socket z from to (loc :: Location)
+  = Socket (Z.Socket z from)
+
+socket :: SocketType from => from -> to -> ZMQ z (Socket z from to loc)
+socket from _ = Socket <$> Z.socket from
+
+bind :: Bindable from => Socket z from to 'Bound -> String -> ZMQ z ()
+bind (Socket s) x = Z.bind s x
+
+connect :: Connectable from => Socket z from to 'Connected -> String -> ZMQ z ()
+connect (Socket s) x = Z.connect s x
 
 
 newtype ZMQIdent = ZMQIdent {getZMQIdent :: ByteString}
@@ -70,18 +116,20 @@ newUUIDIdentity =
   (ZMQIdent . LBS.toStrict . UUID.toByteString) <$> nextRandom
 
 
-setIdentity :: NeedsIdentity from to => to -> Socket z from -> ZMQIdent -> ZMQ z Bool
-setIdentity _ s (ZMQIdent clientId) =
+setIdentity :: NeedsIdentity from to
+            => Socket z from to loc
+            -> ZMQIdent -> ZMQ z Bool
+setIdentity (Socket s) (ZMQIdent clientId) =
   case toRestricted clientId of
     Nothing -> pure False
     Just ident -> True <$ Z.setIdentity ident s
 
-setUUIDIdentity :: NeedsIdentity from to => to -> Socket z from -> ZMQ z ()
-setUUIDIdentity to s = do
-  ident <- liftIO newUUIDIdentity
-  worked <- setIdentity to s ident
-  when (not worked) (error "couldn't restrict uuid")
 
+setUUIDIdentity :: NeedsIdentity from to => Socket z from to loc -> ZMQ z ()
+setUUIDIdentity s = do
+  ident <- liftIO newUUIDIdentity
+  worked <- setIdentity s ident
+  when (not worked) (error "couldn't restrict uuid")
 
 
 -- * Classes
@@ -89,86 +137,86 @@ setUUIDIdentity to s = do
 -- | Send a message over a ZMQ socket
 class Sendable from to aux
   | from to -> aux where
-  send :: to -> aux -> Socket z from -> NonEmpty ByteString -> ZMQ z ()
+  send :: aux -> Socket z from to loc -> NonEmpty ByteString -> ZMQ z ()
 
 instance Sendable Pub Sub () where
-  send Sub () s xs = Z.sendMulti s xs
+  send () (Socket s) xs = Z.sendMulti s xs
 
 instance Sendable XPub Sub () where
-  send Sub () s xs = Z.sendMulti s xs
+  send () (Socket s) xs = Z.sendMulti s xs
 
 instance Sendable Req Rep () where
-  send Rep () s xs = Z.sendMulti s xs
+  send () (Socket s) xs = Z.sendMulti s xs
 
 instance Sendable Req Router () where
-  send Router () s xs = Z.sendMulti s xs
+  send () (Socket s) xs = Z.sendMulti s xs
 
 instance Sendable Router Req ZMQIdent where
-  send Req (ZMQIdent addr) s (x:|xs) = Z.sendMulti s (addr :| "":x:xs)
+  send (ZMQIdent addr) (Socket s) (x:|xs) = Z.sendMulti s (addr :| "":x:xs)
 
 instance Sendable Rep Dealer () where
-  send Dealer () s xs = Z.sendMulti s xs
+  send () (Socket s) xs = Z.sendMulti s xs
 
 instance Sendable Dealer Rep () where
-  send Rep () s (x:|xs) = Z.sendMulti s ("" :| x:xs)
+  send () (Socket s) (x:|xs) = Z.sendMulti s ("" :| x:xs)
 
 instance Sendable Dealer Router () where
-  send Router () s (x:|xs) = Z.sendMulti s ("" :| x:xs)
+  send () (Socket s) (x:|xs) = Z.sendMulti s ("" :| x:xs)
 
 instance Sendable Router Dealer ZMQIdent where
-  send Dealer (ZMQIdent addr) s (x:|xs) = Z.sendMulti s (addr :| "":x:xs)
+  send (ZMQIdent addr) (Socket s) (x:|xs) = Z.sendMulti s (addr :| "":x:xs)
 
 
 -- | Receive a message over a ZMQ socket
 class Receivable from to aux
   | from to -> aux where
-  receive :: to -> Socket z from -> ZMQ z (Maybe (aux, NonEmpty ByteString))
+  receive :: Socket z from to loc -> ZMQ z (Maybe (aux, NonEmpty ByteString))
 
 instance Receivable Sub Pub () where
-  receive Pub s = receiveBasic s
+  receive (Socket s) = receiveBasic s
 
 instance Receivable Sub XPub () where
-  receive XPub s = receiveBasic s
+  receive (Socket s) = receiveBasic s
 
 instance Receivable Req Rep () where
-  receive Rep s = receiveBasic s
+  receive (Socket s) = receiveBasic s
 
 instance Receivable Req Router () where
-  receive Router s = receiveBasic s
+  receive (Socket s) = receiveBasic s
 
 instance Receivable Router Req ZMQIdent where
-  receive Req s = do
+  receive (Socket s) = do
     xs <- Z.receiveMulti s
     case xs of
       (addr:_:x:xs') -> pure (Just (ZMQIdent addr, x :| xs'))
       _ -> pure Nothing
 
 instance Receivable Rep Dealer () where
-  receive Dealer s = receiveBasic s
+  receive (Socket s) = receiveBasic s
 
 instance Receivable Dealer Rep () where
-  receive Rep s = do
+  receive (Socket s) = do
     xs <- Z.receiveMulti s
     case xs of
       (_:x:xs') -> pure (Just ((), x :| xs'))
       _ -> pure Nothing
 
 instance Receivable Dealer Router () where
-  receive Router s = do
+  receive (Socket s) = do
     xs <- Z.receiveMulti s
     case xs of
       (_:x:xs') -> pure (Just ((), x :| xs'))
       _ -> pure Nothing
 
 instance Receivable Router Dealer ZMQIdent where
-  receive Dealer s = do
+  receive (Socket s) = do
     xs <- Z.receiveMulti s
     case xs of
       (addr:_:x:xs') -> pure (Just (ZMQIdent addr, x :| xs'))
       _ -> pure Nothing
 
 
-receiveBasic :: Z.Receiver t => Socket s t -> ZMQ s (Maybe ((), NonEmpty ByteString))
+receiveBasic :: Z.Receiver t => Z.Socket s t -> ZMQ s (Maybe ((), NonEmpty ByteString))
 receiveBasic s = do
   xs <- Z.receiveMulti s
   case xs of

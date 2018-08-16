@@ -69,6 +69,7 @@ type family NeedsIdentity from to :: Constraint where
   NeedsIdentity Req Router = ()
   NeedsIdentity Dealer Rep = ()
   NeedsIdentity Dealer Router = ()
+  NeedsIdentity XSub Pub = ()
 
 
 data Location = Connected | Bound
@@ -96,9 +97,36 @@ type family Connectable from :: Constraint where
 
 
 newtype Socket z from to (loc :: Location)
-  = Socket (Z.Socket z from)
+  = Socket {getSocket :: Z.Socket z from}
 
-socket :: SocketType from => from -> to -> ZMQ z (Socket z from to loc)
+
+type family IsLegal from to :: Constraint where
+  IsLegal Pair Pair = ()
+  IsLegal Sub Pub = ()
+  IsLegal Pub Sub = ()
+  IsLegal XSub Pub = ()
+  IsLegal XPub Sub = ()
+  IsLegal Pub XSub = ()
+  IsLegal Sub XPub = ()
+  IsLegal XPub XSub = ()
+  IsLegal XSub XPub = ()
+  IsLegal Push Pull = ()
+  IsLegal Pull Push = ()
+  IsLegal Req Rep = ()
+  IsLegal Rep Req = ()
+  IsLegal Req Router = ()
+  IsLegal Router Req = ()
+  IsLegal Rep Dealer = ()
+  IsLegal Dealer Rep = ()
+  IsLegal Router Dealer = ()
+  IsLegal Dealer Router = ()
+  IsLegal Router Router = ()
+  IsLegal Dealer Dealer = ()
+
+
+socket :: SocketType from
+       => IsLegal from to
+       => from -> to -> ZMQ z (Socket z from to loc)
 socket from _ = Socket <$> Z.socket from
 
 bind :: Bindable from => Socket z from to 'Bound -> String -> ZMQ z ()
@@ -145,6 +173,9 @@ instance Sendable Pub Sub () where
 instance Sendable XPub Sub () where
   send () (Socket s) xs = Z.sendMulti s xs
 
+instance Sendable Pub XSub () where
+  send () (Socket s) xs = Z.sendMulti s xs
+
 instance Sendable Req Rep () where
   send () (Socket s) xs = Z.sendMulti s xs
 
@@ -176,6 +207,9 @@ instance Receivable Sub Pub () where
   receive (Socket s) = receiveBasic s
 
 instance Receivable Sub XPub () where
+  receive (Socket s) = receiveBasic s
+
+instance Receivable XSub Pub () where
   receive (Socket s) = receiveBasic s
 
 instance Receivable Req Rep () where

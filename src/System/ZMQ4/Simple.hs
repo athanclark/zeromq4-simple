@@ -9,6 +9,7 @@
   , KindSignatures
   , TypeFamilies
   , ConstraintKinds
+  , UndecidableInstances
   #-}
 
 module System.ZMQ4.Simple where
@@ -32,6 +33,7 @@ import Control.Monad (when)
 import Control.Monad.IO.Class (liftIO)
 
 import GHC.Generics (Generic)
+import GHC.TypeLits (TypeError, ErrorMessage (..))
 
 
 
@@ -69,7 +71,6 @@ type family NeedsIdentity from to :: Constraint where
   NeedsIdentity Req Router = ()
   NeedsIdentity Dealer Rep = ()
   NeedsIdentity Dealer Router = ()
-  NeedsIdentity XSub Pub = ()
 
 
 data Location = Connected | Bound
@@ -104,9 +105,9 @@ type family IsLegal from to :: Constraint where
   IsLegal Pair Pair = ()
   IsLegal Sub Pub = ()
   IsLegal Pub Sub = ()
-  IsLegal XSub Pub = ()
+  IsLegal XSub Pub = TypeError (Text "Not legal ZeroMQ socket: For some reason xsub/pub isn't working")
   IsLegal XPub Sub = ()
-  IsLegal Pub XSub = ()
+  IsLegal Pub XSub = TypeError (Text "Not legal ZeroMQ socket: For some reason pub/xsub isn't working")
   IsLegal Sub XPub = ()
   IsLegal XPub XSub = ()
   IsLegal XSub XPub = ()
@@ -122,6 +123,7 @@ type family IsLegal from to :: Constraint where
   IsLegal Dealer Router = ()
   IsLegal Router Router = ()
   IsLegal Dealer Dealer = ()
+  IsLegal from to = TypeError (Text "Not legal ZeroMQ socket")
 
 
 socket :: SocketType from

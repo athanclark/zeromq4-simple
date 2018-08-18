@@ -89,10 +89,13 @@ type family Bindable from :: Constraint where
 type family Connectable from :: Constraint where
   Connectable Pair = ()
   Connectable Req = ()
+  Connectable Rep = ()
   Connectable Router = ()
   Connectable Dealer = ()
   Connectable Sub = ()
   Connectable Pub = ()
+  Connectable XSub = ()
+  Connectable XPub = ()
   Connectable Pull = ()
   Connectable Push = ()
 

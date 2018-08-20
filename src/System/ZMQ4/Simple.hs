@@ -29,6 +29,7 @@ import Data.UUID.V4 (nextRandom)
 import qualified Data.ByteString.Lazy as LBS
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Constraint (Constraint)
+import Data.Aeson (FromJSON (..), ToJSON (..), encode, decode)
 import Control.Monad (when)
 import Control.Monad.IO.Class (liftIO)
 
@@ -172,6 +173,9 @@ class Sendable from to aux
   | from to -> aux where
   send :: aux -> Socket z from to loc -> NonEmpty ByteString -> ZMQ z ()
 
+sendJson :: Sendable from to aux => ToJSON a => aux -> Socket z from to loc -> a -> ZMQ z ()
+sendJson a s x = send a s (LBS.toStrict (encode x) :| [])
+
 instance Sendable Pub Sub () where
   send () (Socket s) xs = Z.sendMulti s xs
 
@@ -182,6 +186,9 @@ instance Sendable Pub XSub () where
   send () (Socket s) xs = Z.sendMulti s xs
 
 instance Sendable Req Rep () where
+  send () (Socket s) xs = Z.sendMulti s xs
+
+instance Sendable Rep Req () where
   send () (Socket s) xs = Z.sendMulti s xs
 
 instance Sendable Req Router () where
@@ -208,6 +215,15 @@ class Receivable from to aux
   | from to -> aux where
   receive :: Socket z from to loc -> ZMQ z (Maybe (aux, NonEmpty ByteString))
 
+receiveJson :: Receivable from to aux => FromJSON a => Socket z from to loc -> ZMQ z (Maybe (aux, a))
+receiveJson s = do
+  mX <- receive s
+  case mX of
+    Nothing -> pure Nothing
+    Just (aux, msg :| _) -> case decode (LBS.fromStrict msg) of
+      Nothing -> pure Nothing
+      Just x -> pure (Just (aux,x))
+
 instance Receivable Sub Pub () where
   receive (Socket s) = receiveBasic s
 
@@ -218,6 +234,9 @@ instance Receivable XSub Pub () where
   receive (Socket s) = receiveBasic s
 
 instance Receivable Req Rep () where
+  receive (Socket s) = receiveBasic s
+
+instance Receivable Rep Req () where
   receive (Socket s) = receiveBasic s
 
 instance Receivable Req Router () where

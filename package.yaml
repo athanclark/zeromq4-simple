@@ -33,14 +33,3 @@ dependencies:
 
 library:
   source-dirs: src
-
-tests:
-  zeromq4-simple-test:
-    main:                Spec.hs
-    source-dirs:         test
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
-    dependencies:
-    - zeromq4-simple

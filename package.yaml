@@ -1,10 +1,10 @@
 name:                zeromq4-simple
 version:             0.0.0
-git:                 "git://git.localcooking.com/tooling/zeromq4-simple"
+github:              "athanclark/zeromq4-simple"
 license:             BSD3
 author:              "Athan Clark"
-maintainer:          "athan.clark@localcooking.com"
-copyright:           "2018 (c) Local Cooking Inc."
+maintainer:          "athan.clark@gmail.com"
+copyright:           "2018, 2019 (c) Athan Clark"
 
 extra-source-files:
 - README.md
@@ -17,7 +17,7 @@ category:            System, FFI
 # To avoid duplicated efforts in documentation and dealing with the
 # complications of embedding Haddock markup inside cabal files, it is
 # common to point users to the README.md file.
-description:         Please see the README on GitHub at <https://github.com/githubuser/zeromq4-simple#readme>
+description:         Please see the README on GitHub at <https://github.com/athanclark/zeromq4-simple#readme>
 
 ghc-options:
 - -Wall

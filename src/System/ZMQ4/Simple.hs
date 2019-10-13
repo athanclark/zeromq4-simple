@@ -195,6 +195,9 @@ class Sendable from to aux
 sendJson :: Sendable from to aux => ToJSON a => aux -> Socket z from to loc -> a -> ZMQ z ()
 sendJson a s x = send a s (LBS.toStrict (encode x) :| [])
 
+instance Sendable Pair Pair () where
+  send () (Socket s) xs = Z.sendMulti s xs
+
 instance Sendable Pub Sub () where
   send () (Socket s) xs = Z.sendMulti s xs
 
@@ -242,6 +245,9 @@ receiveJson s = do
     Just (aux, msg :| _) -> case decode (LBS.fromStrict msg) of
       Nothing -> pure Nothing
       Just x -> pure (Just (aux,x))
+
+instance Receivable Pair Pair () where
+  receive (Socket s) = receiveBasic s
 
 instance Receivable Sub Pub () where
   receive (Socket s) = receiveBasic s

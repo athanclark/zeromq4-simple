@@ -1,5 +1,5 @@
 name:                zeromq4-simple
-version:             0.0.0.1
+version:             0.0.0.2
 github:              "athanclark/zeromq4-simple"
 license:             BSD3
 author:              "Athan Clark"
